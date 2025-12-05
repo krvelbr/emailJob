@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Gestão de Emails & Anexos</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+      }
+      h1,
+      h2 {
+        margin-bottom: 0.5rem;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-top: 1rem;
+      }
+      th,
+      td {
+        border: 1px solid #ccc;
+        padding: 0.5rem;
+      }
+      th {
+        background: #eee;
+      }
+      .controls {
+        margin-bottom: 1rem;
+      }
+      input,
+      select {
+        margin-right: 0.5rem;
+      }
+      .btn {
+        padding: 0.3rem 0.6rem;
+        margin-right: 0.3rem;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Gestão de Emails & Anexos</h1>
+
+    <section>
+      <h2>Métricas / Healthcheck</h2>
+      <button class="btn" onclick="loadMetrics()">Atualizar Métricas</button>
+      <pre id="metrics"></pre>
+    </section>
+
+    <section>
+      <h2>Executar Job Manualmente</h2>
+      <button class="btn" onclick="triggerJob()">Executar Job Agora</button>
+      <pre id="job-result"></pre>
+    </section>
+
+    <section>
+      <h2>Listagem de Emails</h2>
+      <div class="controls">
+        Página: <input type="number" id="page" value="1" min="1" /> Tamanho
+        página:
+        <input type="number" id="page_size" value="10" min="1" /> Remetente:
+        <input type="text" id="sender_filter" /> Assunto:
+        <input type="text" id="subject_filter" />
+        Com anexos:
+        <select id="has_attachments">
+          <option value="">Todos</option>
+          <option value="true">Somente com anexos</option>
+          <option value="false">Somente sem anexos</option>
+        </select>
+        <button class="btn" onclick="loadEmails()">Buscar</button>
+      </div>
+      <table id="emails-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Remetente</th>
+            <th>Assunto</th>
+            <th>Recebido em</th>
+            <th>Deletado?</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="pagination-info"></div>
+    </section>
+
+    <section>
+      <h2>Filtros Dinâmicos</h2>
+      <button class="btn" onclick="loadFilters()">Recarregar Filtros</button>
+      <div id="filters"></div>
+
+      <h3>Criar Filtro</h3>
+      <div>
+        Nome: <input type="text" id="f_name" /> De:
+        <input type="text" id="f_from" /> Assunto contém:
+        <input type="text" id="f_subject" /> Corpo contém:
+        <input type="text" id="f_body" /> Ativo:
+        <input type="checkbox" id="f_enabled" checked />
+        <button class="btn" onclick="createFilter()">Criar</button>
+      </div>
+    </section>
+
+    <script>
+      const API = window.location.origin; // Métricas async function loadMetrics() { const res = await fetch(API + "/metrics"); const data = await res.json(); document.getElementById("metrics").textContent = JSON.stringify(data, null, 2); } // Job manual async function triggerJob() { const res = await fetch(API + "/job/trigger", { method: "POST" }); const data = await res.json(); document.getElementById("job-result").textContent = JSON.stringify(data, null, 2); } // Listagem de emails async function loadEmails() { const page = document.getElementById("page").value; const page_size = document.getElementById("page_size").value; const sender = document.getElementById("sender_filter").value; const subject = document.getElementById("subject_filter").value; const hasAttachments = document.getElementById("has_attachments").value; const params = new URLSearchParams(); params.append("page", page); params.append("page_size", page_size); if (sender) params.append("sender", sender); if (subject) params.append("subject", subject); if (hasAttachments) params.append("has_attachments", hasAttachments); const res = await fetch(API + "/emails?" + params.toString()); const data = await res.json(); const tbody = document.querySelector("#emails-table tbody"); tbody.innerHTML = ""; data.items.forEach(e => { const tr = document.createElement("tr"); tr.innerHTML = ` <td>${e.id}</td> <td>${e.sender}</td> <td>${e.subject || ""}</td> <td>${e.received_at || ""}</td> <td>${e.is_deleted ? "Sim" : "Não"}</td> <td> <button class="btn" onclick="viewEmail(${e.id})">Ver</button> <button class="btn" onclick="deleteEmail(${e.id})">Deletar</button> </td> `; tbody.appendChild(tr); }); document.getElementById("pagination-info").textContent = `Total: ${data.total}, Página: ${data.page}, Tam: ${data.page_size}, ` + `has_prev: ${data.has_previous}, has_next: ${data.has_next}`; } async function viewEmail(id) { const res = await fetch(API + "/emails/" + id); const data = await res.json(); alert(JSON.stringify(data, null, 2)); } async function deleteEmail(id) { if (!confirm("Deseja deletar este e-mail?")) return; await fetch(API + "/emails/" + id, { method: "DELETE" }); loadEmails(); } // Filtros async function loadFilters() { const res = await fetch(API + "/filters"); const data = await res.json(); const div = document.getElementById("filters"); div.innerHTML = ""; data.forEach(f => { const p = document.createElement("p"); p.textContent = JSON.stringify(f); const delBtn = document.createElement("button"); delBtn.textContent = "Excluir"; delBtn.className = "btn"; delBtn.onclick = async () => { await fetch(API + "/filters/" + f.id, { method: "DELETE" }); loadFilters(); }; p.appendChild(delBtn); div.appendChild(p); }); } async function createFilter() { const body = { name: document.getElementById("f_name").value, from_address: document.getElementById("f_from").value || null, subject_contains: document.getElementById("f_subject").value || null, body_contains: document.getElementById("f_body").value || null, enabled: document.getElementById("f_enabled").checked }; const res = await fetch(API + "/filters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); if (res.ok) { document.getElementById("f_name").value = ""; document.getElementById("f_from").value = ""; document.getElementById("f_subject").value = ""; document.getElementById("f_body").value = ""; document.getElementById("f_enabled").checked = true; loadFilters(); } else { alert("Erro ao criar filtro"); } } loadMetrics(); loadEmails(); loadFilters();
+    </script>
+  </body>
+</html>
